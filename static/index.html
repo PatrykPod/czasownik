@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Czasownik</title>
+<style>
+body {
+    font-family: Arial;
+    margin: 20px;
+}
+
+#projects {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.project {
+    padding: 15px;
+    border: 2px solid #ccc;
+    cursor: pointer;
+}
+
+.active {
+    background: #007bff;
+    color: white;
+}
+
+#top {
+    margin-bottom: 20px;
+}
+
+@keyframes activeWarning {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 80, 80, 0);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(255, 80, 80, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(255, 80, 80, 0);
+  }
+}
+
+.active-warning {
+  animation: activeWarning 0.166s ease-in-out 6;
+}
+
+</style>
+</head>
+<body>
+
+<h1>Czasownik</h1>
+
+<div id="top">
+    <div><b>Suma dnia:</b> <span id="total">0:00</span></div>
+    <button onclick="endDay()">Koniec dnia</button>
+</div>
+
+<div id="projects"></div>
+
+<script>
+    document.body.style.scrollBehavior = "smooth";
+
+const API_URL = "http://127.0.0.1:8000/api/logs/";
+
+const projects = Array.from({length: 10}, (_, i) => "Projekt " + (i+1));
+
+let activeProject = null;
+let times = {};
+let logs = [];
+let startTime = null;
+
+projects.forEach(p => times[p] = 0);
+
+function toggle(project) {
+    const now = new Date();
+
+    // ✅ jeśli nic nie działa → start
+    if (!activeProject) {
+        activeProject = project;
+        startTime = now;
+        saveState();
+        initUI();
+updateUI();;
+        return;
+    }
+
+    // ✅ klik w aktywny → stop
+    if (activeProject === project) {
+        stop(now);
+        saveState();
+        initUI();
+updateUI();;
+        return;
+    }
+
+    // ❌ klik w inny → blokada + animacja
+    triggerWarning();
+}
+
+function triggerWarning() {
+    const el = document.querySelector(".project.active");
+    if (!el) return;
+
+    // usuń klasę
+    el.classList.remove("active-warning");
+
+    // restart animacji (kluczowe!)
+    void el.offsetWidth;
+
+    // dodaj ponownie
+    el.classList.add("active-warning");
+
+    // scroll
+    el.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
+}
+
+
+
+function format(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+
+    return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function totalTime() {
+    return Object.values(times).reduce((a,b)=>a+b,0);
+}
+
+function initUI() {
+    const container = document.getElementById("projects");
+
+    projects.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "project";
+        div.dataset.project = p;
+        div.onclick = () => toggle(p);
+
+        div.innerHTML = `
+            <div>${p}</div>
+            <div class="time">0:00:00</div>
+        `;
+
+        container.appendChild(div);
+    });
+}
+
+function updateUI() {
+    document.querySelectorAll(".project").forEach(el => {
+        const p = el.dataset.project;
+
+        // aktywny stan
+        el.classList.toggle("active", p === activeProject);
+
+        // czas
+        el.querySelector(".time").innerText = format(times[p]);
+    });
+
+    document.getElementById("total").innerText = format(totalTime());
+}
+
+
+// 🔥 PRAWDZIWY TIMER
+setInterval(tick, 1000);
+
+function endDay() {
+    if (!confirm("Czy na pewno zakończyć dzień i wysłać logi?")) {
+        return;
+    }
+
+    const now = new Date();
+    stop(now);
+
+    fetch(API_URL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            user_id: "1",
+            logs: logs
+        })
+    });
+
+    times = {};
+    logs = [];
+    projects.forEach(p => times[p] = 0);
+
+    initUI();
+updateUI();;
+}
+
+// LOCAL STORAGE
+function getUserId() {
+    let id = localStorage.getItem("user_id");
+
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem("user_id", id);
+    }
+
+    return id;
+}
+
+function saveState() {
+    localStorage.setItem("times", JSON.stringify(times));
+    localStorage.setItem("logs", JSON.stringify(logs));
+    localStorage.setItem("activeProject", activeProject || "");
+}
+
+function loadState() {
+    const t = localStorage.getItem("times");
+    const l = localStorage.getItem("logs");
+    const a = localStorage.getItem("activeProject");
+
+    if (t) times = JSON.parse(t);
+    if (l) logs = JSON.parse(l);
+    if (a) activeProject = a || null;
+}
+
+function tick() {
+    if (activeProject) {
+        times[activeProject] += 1;
+    }
+
+    saveState();
+    updateUI();
+}
+
+
+function stop(now) {
+    if (!activeProject || !startTime) {
+        activeProject = null;
+        startTime = null;
+        return;
+    }
+
+    const duration = Math.floor((now - startTime) / 1000);
+
+    logs.push({
+        project_id: activeProject,
+        start: startTime.toISOString(),
+        end: now.toISOString(),
+        duration: duration
+    });
+
+    activeProject = null;
+    startTime = null;
+
+    saveState();
+}
+
+
+function confirmEndDay() {
+    closeModal();
+
+    const now = new Date();
+    stop(now);
+
+    fetch(API_URL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            user_id: getUserId(),
+            logs: logs
+        })
+    });
+
+    times = {};
+    logs = [];
+    activeProject = null;
+
+    projects.forEach(p => times[p] = 0);
+
+    localStorage.clear(); // 🔥
+
+    initUI();
+updateUI();;
+}
+
+loadState();
+if (activeProject && !startTime) {
+    startTime = new Date(); // fallback
+}
+initUI();
+updateUI();;
+</script>
+
+
+</body>
+</html>
