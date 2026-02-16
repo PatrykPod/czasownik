@@ -166,13 +166,15 @@ function updateUI() {
     document.getElementById("total").innerText = format(totalTime());
 }
 
-
 // 🔥 PRAWDZIWY TIMER
 setInterval(tick, 1000);
 
 async function finalizeDay({ clearStorage = false } = {}) {
-    const now = new Date();
-    stop(now);
+    if (!Array.isArray(logs)) logs = [];
+
+    if (activeProject && startTime) {
+        stop(new Date());
+    }
 
     try {
         const res = await fetch(API_URL, {
@@ -189,7 +191,7 @@ async function finalizeDay({ clearStorage = false } = {}) {
             return;
         }
 
-        // reset
+        // 🔥 RESET
         times = {};
         logs = [];
         activeProject = null;
@@ -197,11 +199,11 @@ async function finalizeDay({ clearStorage = false } = {}) {
 
         projects.forEach(p => times[p] = 0);
 
-        if (clearStorage) {
-            localStorage.clear();
-        } else {
-            saveState();
-        }
+        // 🔥 KLUCZOWE
+        localStorage.removeItem("logs");
+        localStorage.removeItem("times");
+        localStorage.removeItem("activeProject");
+        localStorage.removeItem("startTime");
 
         updateUI();
 
@@ -209,8 +211,6 @@ async function finalizeDay({ clearStorage = false } = {}) {
         alert("Brak połączenia z serwerem");
     }
 }
-
-
 
 function endDay() {
     if (!confirm("Czy na pewno zakończyć dzień i wysłać logi?")) {
