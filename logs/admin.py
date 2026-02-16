@@ -22,41 +22,6 @@ class TimeLogAdmin(admin.ModelAdmin):
         return format_duration(obj.duration)
     duration_human.short_description = "Czas"
 
-    # 🔥 RAPORT NA GÓRZE
-    def changelist_view(self, request, extra_context=None):
-        response = super().changelist_view(request, extra_context)
-
-        try:
-            queryset = response.context_data['cl'].queryset
-
-            total = queryset.aggregate(total=Sum('duration'))['total'] or 0
-
-            by_project = queryset.values('project_id').annotate(
-                total=Sum('duration')
-            ).order_by('-total')
-
-            by_user = queryset.values('user_id').annotate(
-                total=Sum('duration')
-            ).order_by('-total')
-
-            response.context_data['summary'] = {
-                'total': format_duration(total),
-                'by_project': [
-                    (row['project_id'], format_duration(row['total']))
-                    for row in by_project
-                ],
-                'by_user': [
-                    (row['user_id'], format_duration(row['total']))
-                    for row in by_user
-                ]
-            }
-
-        except Exception:
-            pass
-
-        return response
-
-
     def changelist_view(self, request, extra_context=None):
         response = super().changelist_view(request, extra_context)
 
