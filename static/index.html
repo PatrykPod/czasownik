@@ -62,7 +62,7 @@ body {
 <script>
     document.body.style.scrollBehavior = "smooth";
 
-const API_URL = "http://127.0.0.1:8000/api/logs/";
+const API_URL = "https://czasownik.onrender.com/api/logs/";
 
 const projects = Array.from({length: 10}, (_, i) => "Projekt " + (i+1));
 
@@ -81,8 +81,7 @@ function toggle(project) {
         activeProject = project;
         startTime = now;
         saveState();
-        initUI();
-updateUI();;
+        updateUI();
         return;
     }
 
@@ -90,8 +89,7 @@ updateUI();;
     if (activeProject === project) {
         stop(now);
         saveState();
-        initUI();
-updateUI();;
+        updateUI();
         return;
     }
 
@@ -136,6 +134,8 @@ function totalTime() {
 function initUI() {
     const container = document.getElementById("projects");
 
+    container.innerHTML = ""; // 🔥 KLUCZOWE
+
     projects.forEach(p => {
         const div = document.createElement("div");
         div.className = "project";
@@ -151,6 +151,7 @@ function initUI() {
     });
 }
 
+
 function updateUI() {
     document.querySelectorAll(".project").forEach(el => {
         const p = el.dataset.project;
@@ -159,7 +160,7 @@ function updateUI() {
         el.classList.toggle("active", p === activeProject);
 
         // czas
-        el.querySelector(".time").innerText = format(times[p]);
+        el.querySelector(".time").innerText = format(times[p] || 0);
     });
 
     document.getElementById("total").innerText = format(totalTime());
@@ -169,30 +170,61 @@ function updateUI() {
 // 🔥 PRAWDZIWY TIMER
 setInterval(tick, 1000);
 
+async function finalizeDay({ clearStorage = false } = {}) {
+    const now = new Date();
+    stop(now);
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                user_id: getUserId(),
+                logs: logs
+            })
+        });
+
+        if (!res.ok) {
+            alert("Błąd serwera — dane nie zostały zapisane");
+            return;
+        }
+
+        // reset
+        times = {};
+        logs = [];
+        activeProject = null;
+        startTime = null;
+
+        projects.forEach(p => times[p] = 0);
+
+        if (clearStorage) {
+            localStorage.clear();
+        } else {
+            saveState();
+        }
+
+        updateUI();
+
+    } catch (e) {
+        alert("Brak połączenia z serwerem");
+    }
+}
+
+
+
 function endDay() {
     if (!confirm("Czy na pewno zakończyć dzień i wysłać logi?")) {
         return;
     }
 
-    const now = new Date();
-    stop(now);
-
-    fetch(API_URL, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            user_id: "1",
-            logs: logs
-        })
-    });
-
-    times = {};
-    logs = [];
-    projects.forEach(p => times[p] = 0);
-
-    initUI();
-updateUI();;
+    finalizeDay(); // 🔥
 }
+
+function confirmEndDay() { // NOT IN USE AT THIS STAGE- AWAITS FOR MODAL
+    closeModal();
+    finalizeDay({ clearStorage: true }); // 🔥
+}
+
 
 // LOCAL STORAGE
 function getUserId() {
@@ -206,21 +238,6 @@ function getUserId() {
     return id;
 }
 
-function saveState() {
-    localStorage.setItem("times", JSON.stringify(times));
-    localStorage.setItem("logs", JSON.stringify(logs));
-    localStorage.setItem("activeProject", activeProject || "");
-}
-
-function loadState() {
-    const t = localStorage.getItem("times");
-    const l = localStorage.getItem("logs");
-    const a = localStorage.getItem("activeProject");
-
-    if (t) times = JSON.parse(t);
-    if (l) logs = JSON.parse(l);
-    if (a) activeProject = a || null;
-}
 
 function tick() {
     if (activeProject) {
@@ -254,40 +271,29 @@ function stop(now) {
     saveState();
 }
 
-
-function confirmEndDay() {
-    closeModal();
-
-    const now = new Date();
-    stop(now);
-
-    fetch(API_URL, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            user_id: getUserId(),
-            logs: logs
-        })
-    });
-
-    times = {};
-    logs = [];
-    activeProject = null;
-
-    projects.forEach(p => times[p] = 0);
-
-    localStorage.clear(); // 🔥
-
-    initUI();
-updateUI();;
+function saveState() {
+    localStorage.setItem("times", JSON.stringify(times));
+    localStorage.setItem("logs", JSON.stringify(logs));
+    localStorage.setItem("activeProject", activeProject || "");
+    localStorage.setItem("startTime", startTime ? startTime.toISOString() : "");
 }
+
+function loadState() {
+    const t = localStorage.getItem("times");
+    const l = localStorage.getItem("logs");
+    const a = localStorage.getItem("activeProject");
+    const s = localStorage.getItem("startTime");
+
+    if (t) times = JSON.parse(t);
+    if (l) logs = JSON.parse(l);
+    if (a) activeProject = a || null;
+    if (s) startTime = new Date(s);
+}
+
 
 loadState();
-if (activeProject && !startTime) {
-    startTime = new Date(); // fallback
-}
 initUI();
-updateUI();;
+updateUI();
 </script>
 
 
